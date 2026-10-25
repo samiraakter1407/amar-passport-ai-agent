@@ -1,3 +1,4 @@
+
 import os
 
 from crewai import Agent, LLM
@@ -21,7 +22,6 @@ llm = LLM(
 )
 
 
-
 def create_policy_guardian():
     """Create the agent responsible for passport eligibility checks."""
 
@@ -43,6 +43,8 @@ def create_policy_guardian():
         verbose=True,
         allow_delegation=False,
     )
+
+
 def create_fee_calculator():
     """Create the agent responsible for passport fee calculations."""
 
@@ -88,3 +90,13 @@ def create_document_architect():
         verbose=True,
         allow_delegation=False,
     )
+
+
+def create_agents():
+    """Create and return all three passport assessment agents."""
+
+    return [
+        create_policy_guardian(),
+        create_fee_calculator(),
+        create_document_architect(),
+    ]

@@ -1,17 +1,27 @@
+
 import json
 from pathlib import Path
 
 
-DB_PATH = Path(__file__).parent / "data" / "passport_data.json"
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "data" / "passport_data.json"
 
 
 def load_database():
+    """Load local passport reference data."""
+    if not DB_PATH.exists():
+        raise FileNotFoundError(
+            f"Passport database not found: {DB_PATH}"
+        )
+
     with DB_PATH.open("r", encoding="utf-8") as file:
         return json.load(file)
 
 
-def build_report(applicant):
-    db = load_database()
+def build_report(applicant, database=None, fee_data=None, fee_source=None):
+    """Build a deterministic passport readiness report."""
+    db = database if database is not None else load_database()
+
     age = int(applicant["age"])
     pages = str(applicant["pages"])
     validity = int(applicant["requested_validity_years"])
@@ -22,21 +32,25 @@ def build_report(applicant):
     warnings = []
     documents = list(db["required_docs"]["adult"])
 
-    # Eligibility check using local rules.
     if age < 18:
         max_validity = db["eligibility_rules"]["under_18"]["max_validity_years"]
+
         if validity > max_validity:
             warnings.append(
                 "CONFLICT: Applicants under 18 are limited to "
                 f"{max_validity}-year validity in the local assignment rules."
             )
+
         documents = list(db["required_docs"]["minor_under_18"])
+
     elif age > 65:
         max_validity = db["eligibility_rules"]["over_65"]["max_validity_years"]
+
         warnings.append(
             "VERIFY OFFICIAL POLICY: The over-65 restriction in the "
             "local database has not been independently verified."
         )
+
         if validity > max_validity:
             warnings.append(
                 f"CONFLICT: Local assignment rules specify at most "
@@ -52,23 +66,30 @@ def build_report(applicant):
             "are officially acceptable for this applicant."
         )
 
-    # Fee lookup: use the local assignment dataset.
     fee = None
+
     if pages not in ("48", "64"):
         warnings.append("Invalid page count: choose 48 or 64.")
     elif validity not in (5, 10):
         warnings.append("Invalid validity: choose 5 or 10 years.")
-    elif delivery not in ("regular", "express", "super_express"):
-        warnings.append("Invalid delivery type.")
     else:
-        fee = db["fees_2026"][f"{pages}_pages"][f"{validity}_years"][delivery]
+        # Prefer fee data supplied by the source module, if available.
+        fees = fee_data if fee_data is not None else db["fees_2026"]
 
-    # Do not silently accept an age/validity conflict.
+        try:
+            fee = fees[f"{pages}_pages"][f"{validity}_years"][delivery]
+        except (KeyError, TypeError):
+            warnings.append(
+                "Fee unavailable for the selected passport options."
+            )
+
     conflict = any("CONFLICT:" in warning for warning in warnings)
+
     if conflict:
         fee_status = "Not confirmed until eligibility is resolved"
     elif fee is not None:
-        fee_status = f"{fee:,} BDT (assignment-provided local dataset)"
+        source_label = fee_source or "assignment-provided local dataset"
+        fee_status = f"{fee:,} BDT ({source_label})"
     else:
         fee_status = "Unavailable"
 
@@ -84,6 +105,7 @@ def build_report(applicant):
 
 
 def print_report(report):
+    """Print the report as an English Markdown table and Bangla summary."""
     print("\n# Amar Passport Readiness Report\n")
     print("| Field | Result |")
     print("|---|---|")
@@ -112,15 +134,28 @@ def print_report(report):
     for document in report["documents"]:
         print(f"  - {document}")
 
-    print("\nনোট: ফি ও বয়সভিত্তিক নিয়ম assignment-এর local database "
-          "থেকে নেওয়া। আবেদন করার আগে সরকারি তথ্য যাচাই করুন।")
+    print(
+        "\nনোট: ফি ও বয়সভিত্তিক নিয়ম assignment-এর local database "
+        "থেকে নেওয়া। আবেদন করার আগে সরকারি তথ্য যাচাই করুন।"
+    )
+
+
+def print_final_report(applicant, database=None, fee_data=None, fee_source=None):
+    """Compatibility function used by src/main.py."""
+    report = build_report(
+        applicant,
+        database=database,
+        fee_data=fee_data,
+        fee_source=fee_source,
+    )
+    print_report(report)
 
 
 if __name__ == "__main__":
     print("=== Local Fallback Mode (No LLM Required) ===")
 
     applicant = {
-        "age": int(input("Age: ")),
+        "age": input("Age: ").strip(),
         "profession": input("Profession: ").strip(),
         "delivery_speed": input(
             "Delivery (regular/express/super_express): "
@@ -133,7 +168,6 @@ if __name__ == "__main__":
     }
 
     try:
-        report = build_report(applicant)
-        print_report(report)
-    except (ValueError, KeyError) as error:
+        print_final_report(applicant)
+    except (ValueError, KeyError, FileNotFoundError) as error:
         print(f"Invalid input or missing database entry: {error}")
