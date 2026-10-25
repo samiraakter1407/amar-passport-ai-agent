@@ -16,6 +16,12 @@ The system uses specialized AI agents to review applicant eligibility, estimate 
 - **Bilingual Report:** Displays the final report in English and Bangla.
 - **Input Validation:** Validates age, profession, delivery speed, passport pages, validity, and NID status.
 
+
+## 🎬 Project Demo
+
+[▶️ Watch Amar Passport AI Agent Demo](./amar-passport-ai-agent-demo.mp4)
+
+
 ## 🛠️ Tech Stack
 
 - Python
